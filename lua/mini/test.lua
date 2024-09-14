@@ -317,9 +317,11 @@ end
 ---
 --- Execution of test case goes by the following rules:
 --- - Call functions in order:
----     - All elements of `hooks.pre` from first to last without arguments.
+---     - All elements of `hooks.pre_once` from first to last without arguments.
+---     - All elements of `hooks.pre_case` from first to last without arguments.
 ---     - Field `test` with arguments unpacked from `args`.
----     - All elements of `hooks.post` from first to last without arguments.
+---     - All elements of `hooks.post_case` from first to last without arguments.
+---     - All elements of `hooks.post_once` from first to last without arguments.
 --- - Error in any call gets appended to `exec.fails`, meaning error in any
 ---   hook will lead to test fail.
 --- - State (`exec.state`) is changed before every call and after last call.
@@ -340,8 +342,8 @@ end
 ---         - 'Fail' (some fails, no notes).
 ---         - 'Fail with notes' (some fails, some notes).
 ---@field hooks table Hooks to be executed as part of test case. Has fields
----   <pre> and <post> with arrays to be consecutively executed before and
----   after execution of `test`.
+---   <pre_once>, <pre_case>, <post_case>, and <post_once> with arrays to be
+---   consecutively executed before and after execution of `test`.
 ---@field test function|table Main callable object representing test action.
 ---@tag MiniTest-test-case
 
@@ -539,6 +541,8 @@ MiniTest.collect = function(opts)
   local cases, hooks_once = {}, {}
   for i, c in ipairs(raw_cases) do
     if opts.filter_cases(c) then
+      c.hooks.pre_case, c.hooks.post_case = c.hooks.pre, c.hooks.post
+      c.hooks.pre, c.hooks.post = nil, nil
       table.insert(cases, c)
       table.insert(hooks_once, raw_hooks_once[i])
     end
@@ -1733,22 +1737,26 @@ H.schedule_case = function(case, case_num, opts)
     H.cache.finally = nil
   end
 
+  local exec_hooks = function(hooks, hook_type)
+    for i, h in ipairs(hooks) do
+      exec_step(h, "Executing '" .. hook_type .. "' hook #" .. i)
+    end
+  end
+
   vim.schedule(function()
     if H.cache.should_stop_execution then return end
     case.exec = case.exec or { fails = {}, notes = {} }
     MiniTest.current.case = case
 
-    for i, hook_pre in ipairs(case.hooks.pre) do
-      exec_step(hook_pre, "Executing 'pre' hook #" .. i)
-    end
+    exec_hooks(case.hooks.pre_once, 'pre_once')
+    exec_hooks(case.hooks.pre_case, 'pre_case')
 
     local case_f = #case.exec.fails == 0 and function() case.test(unpack(case.args)) end
       or function() table.insert(case.exec.notes, 'Skip case due to error(s) in hooks.') end
     exec_step(case_f, 'Executing test')
 
-    for i, hook_post in ipairs(case.hooks.post) do
-      exec_step(hook_post, "Executing 'post' hook #" .. i)
-    end
+    exec_hooks(case.hooks.post_case, 'post_case')
+    exec_hooks(case.hooks.post_once, 'post_once')
 
     update_state(H.case_final_state(case))
   end)
@@ -1834,18 +1842,17 @@ end
 H.inject_hooks_once = function(cases, hooks_once)
   -- NOTE: this heavily relies on the equivalence of "have same object id" and
   -- "are same hooks"
-  local already_injected = {}
-  local n = #cases
+  local already_injected, n = {}, #cases
 
   -- Inject 'pre' hooks moving forwards
   for i = 1, n do
     local case, hooks = cases[i], hooks_once[i].pre
-    local target_tbl_id = 1
+    case.hooks.pre_once = {}
     for j = 1, #hooks do
       local h = hooks[j]
       if not already_injected[h] then
-        table.insert(case.hooks.pre, target_tbl_id, h)
-        target_tbl_id, already_injected[h] = target_tbl_id + 1, true
+        table.insert(case.hooks.pre_once, h)
+        already_injected[h] = true
       end
     end
   end
@@ -1853,11 +1860,11 @@ H.inject_hooks_once = function(cases, hooks_once)
   -- Inject 'post' hooks moving backwards
   for i = n, 1, -1 do
     local case, hooks = cases[i], hooks_once[i].post
-    local target_table_id = #case.hooks.post + 1
+    case.hooks.post_once = {}
     for j = #hooks, 1, -1 do
       local h = hooks[j]
       if not already_injected[h] then
-        table.insert(case.hooks.post, target_table_id, h)
+        table.insert(case.hooks.post_once, 1, h)
         already_injected[h] = true
       end
     end

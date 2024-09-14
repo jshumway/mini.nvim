@@ -294,9 +294,11 @@ of test execution.
 
 Execution of test case goes by the following rules:
 - Call functions in order:
-    - All elements of `hooks.pre` from first to last without arguments.
+    - All elements of `hooks.pre_once` from first to last without arguments.
+    - All elements of `hooks.pre_case` from first to last without arguments.
     - Field `test` with arguments unpacked from `args`.
-    - All elements of `hooks.post` from first to last without arguments.
+    - All elements of `hooks.post_case` from first to last without arguments.
+    - All elements of `hooks.post_once` from first to last without arguments.
 - Error in any call gets appended to `exec.fails`, meaning error in any
   hook will lead to test fail.
 - State (`exec.state`) is changed before every call and after last call.
@@ -319,8 +321,8 @@ Fields ~
         - 'Fail' (some fails, no notes).
         - 'Fail with notes' (some fails, some notes).
 {hooks} `(table)` Hooks to be executed as part of test case. Has fields
-  <pre> and <post> with arrays to be consecutively executed before and
-  after execution of `test`.
+  <pre_once>, <pre_case>, <post_case>, and <post_once> with arrays to be
+  consecutively executed before and after execution of `test`.
 {test} `(function|table)` Main callable object representing test action.
 
 ------------------------------------------------------------------------------

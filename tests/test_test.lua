@@ -26,7 +26,12 @@ local get_ref_path = function(name) return string.format('tests/dir-test/%s', na
 local get_current_all_cases = function()
   -- Encode functions inside child. Works only for "simple" functions.
   local command = [[vim.tbl_map(function(case)
-    case.hooks = { pre = vim.tbl_map(string.dump, case.hooks.pre), post = vim.tbl_map(string.dump, case.hooks.post) }
+    case.hooks = {
+      pre_once = vim.tbl_map(string.dump, case.hooks.pre_once),
+      pre_case = vim.tbl_map(string.dump, case.hooks.pre_case),
+      post_case = vim.tbl_map(string.dump, case.hooks.post_case),
+      post_once = vim.tbl_map(string.dump, case.hooks.post_once),
+    }
     case.test = string.dump(case.test)
     return case
   end, MiniTest.current.all_cases)]]
@@ -34,7 +39,12 @@ local get_current_all_cases = function()
 
   -- Decode functions in current process
   res = vim.tbl_map(function(case)
-    case.hooks = { pre = vim.tbl_map(loadstring, case.hooks.pre), post = vim.tbl_map(loadstring, case.hooks.post) }
+    case.hooks = {
+      pre_once = vim.tbl_map(loadstring, case.hooks.pre_once),
+      pre_case = vim.tbl_map(loadstring, case.hooks.pre_case),
+      post_case = vim.tbl_map(loadstring, case.hooks.post_case),
+      post_once = vim.tbl_map(loadstring, case.hooks.post_once),
+    }
     ---@diagnostic disable-next-line:param-type-mismatch
     case.test = loadstring(case.test)
     return case
@@ -386,6 +396,10 @@ T['collect()']['works'] = function()
   local keys = child.lua_get('vim.tbl_keys(_G.cases[1])')
   table.sort(keys)
   eq(keys, { 'args', 'data', 'desc', 'hooks', 'test' })
+
+  local hook_keys = child.lua_get('vim.tbl_keys(_G.cases[1].hooks)')
+  table.sort(hook_keys)
+  eq(hook_keys, { 'post_case', 'post_once', 'pre_case', 'pre_once' })
 end
 
 T['collect()']['respects `emulate_busted` option'] = function()
@@ -510,15 +524,15 @@ T['execute()']['properly calls `reporter` methods'] = function()
   child.lua([[MiniTest.execute(_G.cases, { reporter = _G.reporter })]])
   eq(child.lua_get('#_G.all_cases'), 2)
   eq(child.lua_get('_G.update_history'), {
-    { case_num = 1, state = "Executing 'pre' hook #1" },
-    { case_num = 1, state = "Executing 'pre' hook #2" },
+    { case_num = 1, state = "Executing 'pre_once' hook #1" },
+    { case_num = 1, state = "Executing 'pre_case' hook #1" },
     { case_num = 1, state = 'Executing test' },
-    { case_num = 1, state = "Executing 'post' hook #1" },
+    { case_num = 1, state = "Executing 'post_case' hook #1" },
     { case_num = 1, state = 'Fail' },
-    { case_num = 2, state = "Executing 'pre' hook #1" },
+    { case_num = 2, state = "Executing 'pre_case' hook #1" },
     { case_num = 2, state = 'Executing test' },
-    { case_num = 2, state = "Executing 'post' hook #1" },
-    { case_num = 2, state = "Executing 'post' hook #2" },
+    { case_num = 2, state = "Executing 'post_case' hook #1" },
+    { case_num = 2, state = "Executing 'post_once' hook #1" },
     { case_num = 2, state = 'Pass' },
   })
   eq(child.lua_get('_G.was_in_finish'), true)
