@@ -272,6 +272,8 @@ MiniTest.current = { all_cases = nil, case = nil }
 ---     `parametrize` option at all.
 ---   - <data> - user data to be forwarded to cases. Can be used for a more
 ---     granular filtering.
+---   - <n_retry> - number of times to retry each case until success.
+---     Default: 1.
 ---@param tbl table|nil Initial test items (possibly nested). Will be executed
 ---   without any guarantees on order.
 ---
@@ -283,15 +285,14 @@ MiniTest.current = { all_cases = nil, case = nil }
 ---   T['works'] = function() MiniTest.expect.equality(1, 1) end
 ---
 ---   -- Use with custom options. This will result into two actual cases: first
----   -- will pass, second - fail.
+---   -- will pass, second - fail after two attempts.
 ---   T['nested'] = MiniTest.new_set({
 ---     hooks = { pre_case = function() _G.x = 1 end },
----     parametrize = { { 1 }, { 2 } }
+---     parametrize = { { 1 }, { 2 } },
+---     n_retry = 2,
 ---   })
 ---
----   T['nested']['works'] = function(x)
----     MiniTest.expect.equality(_G.x, x)
----   end
+---   T['nested']['works'] = function(x) MiniTest.expect.equality(_G.x, x) end
 --- <
 MiniTest.new_set = function(opts, tbl)
   opts = opts or {}
@@ -1708,13 +1709,16 @@ H.schedule_case = function(case, case_num, opts)
     H.exec_callable(opts.reporter.update, case_num)
   end
 
+  local register_fails
   local on_err = function(e)
     if H.cache.error_is_from_skip then
       -- Add error message to 'notes' rather than 'fails'
       table.insert(case.exec.notes, tostring(e))
       H.cache.error_is_from_skip = false
-      return
+      return true
     end
+
+    if not register_fails then return false end
 
     -- Append traceback to error message and indent lines for pretty print
     local error_lines = { tostring(e), 'Traceback:', unpack(H.traceback()) }
@@ -1723,24 +1727,30 @@ H.schedule_case = function(case, case_num, opts)
 
     if opts.stop_on_error then
       MiniTest.stop()
-      update_state(H.case_final_state(case))
+      return true
     end
+    return false
   end
 
   local exec_step = function(f, state)
     update_state(state)
 
     H.cache.n_screenshots = 0
-    xpcall(f, on_err)
+    local ok_f, ok_err = xpcall(f, on_err)
 
     H.exec_callable(H.cache.finally)
     H.cache.finally = nil
+
+    return ok_f or ok_err
   end
 
   local exec_hooks = function(hooks, hook_type)
+    local ok_all = true
     for i, h in ipairs(hooks) do
-      exec_step(h, "Executing '" .. hook_type .. "' hook #" .. i)
+      local ok = exec_step(h, "Executing '" .. hook_type .. "' hook #" .. i)
+      ok_all = ok_all and ok
     end
+    return ok_all
   end
 
   vim.schedule(function()
@@ -1748,14 +1758,27 @@ H.schedule_case = function(case, case_num, opts)
     case.exec = case.exec or { fails = {}, notes = {} }
     MiniTest.current.case = case
 
-    exec_hooks(case.hooks.pre_once, 'pre_once')
-    exec_hooks(case.hooks.pre_case, 'pre_case')
+    register_fails = true
+    local ok_once = exec_hooks(case.hooks.pre_once, 'pre_once')
 
-    local case_f = #case.exec.fails == 0 and function() case.test(unpack(case.args)) end
-      or function() table.insert(case.exec.notes, 'Skip case due to error(s) in hooks.') end
-    exec_step(case_f, 'Executing test')
+    for cur_try = 1, case.n_retry do
+      -- Register fails only on last retry
+      register_fails = cur_try == case.n_retry
 
-    exec_hooks(case.hooks.post_case, 'post_case')
+      local ok_pre = exec_hooks(case.hooks.pre_case, 'pre_case') and ok_once
+
+      local case_f = ok_pre and function() case.test(unpack(case.args)) end
+        or function() table.insert(case.exec.notes, 'Skip case due to error(s) in hooks.') end
+      local ok_case = exec_step(case_f, 'Executing test')
+
+      -- Ensure that post hooks fails are always registered in case of success
+      register_fails = register_fails or ok_case
+      exec_hooks(case.hooks.post_case, 'post_case')
+
+      if ok_case then break end
+    end
+
+    register_fails = true
     exec_hooks(case.hooks.post_once, 'post_once')
 
     update_state(H.case_final_state(case))
@@ -1769,12 +1792,12 @@ end
 ---   be executed only once before corresponding item.
 ---@private
 H.set_to_testcases = function(set, template, hooks_once)
-  template = template or { args = {}, desc = {}, hooks = { pre = {}, post = {} }, data = {} }
+  template = template or { args = {}, desc = {}, hooks = { pre = {}, post = {} }, data = {}, n_retry = 1 }
   hooks_once = hooks_once or { pre = {}, post = {} }
 
   local metatbl = getmetatable(set)
   local opts, key_order = metatbl.opts, metatbl.key_order
-  local hooks, parametrize, data = opts.hooks or {}, opts.parametrize or { {} }, opts.data or {}
+  local hooks, parametrize, data, n_retry = opts.hooks or {}, opts.parametrize or { {} }, opts.data or {}, opts.n_retry
 
   -- Convert to steps only callable or test set nodes
   -- Ensure that all elements of `set` are being considered (might not be the
@@ -1807,6 +1830,7 @@ H.set_to_testcases = function(set, template, hooks_once)
         desc = type(key) == 'string' and key:gsub('\n', '\\n') or key,
         hooks = { pre = hooks.pre_case, post = hooks.post_case },
         data = data,
+        n_retry = n_retry,
       })
 
       if vim.is_callable(node) then
@@ -1885,6 +1909,7 @@ H.extend_template = function(template, layer)
   table.insert(res.desc, layer.desc)
   res.hooks = H.extend_hooks(res.hooks, layer.hooks, false)
   res.data = vim.tbl_deep_extend('force', res.data, layer.data)
+  res.n_retry = layer.n_retry or res.n_retry or 1
 
   return res
 end

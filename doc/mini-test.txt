@@ -260,6 +260,8 @@ Parameters ~
     `parametrize` option at all.
   - <data> - user data to be forwarded to cases. Can be used for a more
     granular filtering.
+  - <n_retry> - number of times to retry each case until success.
+    Default: 1.
 {tbl} `(table|nil)` Initial test items (possibly nested). Will be executed
   without any guarantees on order.
 
@@ -273,15 +275,14 @@ Usage ~
   T['works'] = function() MiniTest.expect.equality(1, 1) end
 
   -- Use with custom options. This will result into two actual cases: first
-  -- will pass, second - fail.
+  -- will pass, second - fail after two attempts.
   T['nested'] = MiniTest.new_set({
     hooks = { pre_case = function() _G.x = 1 end },
-    parametrize = { { 1 }, { 2 } }
+    parametrize = { { 1 }, { 2 } },
+    n_retry = 2,
   })
 
-  T['nested']['works'] = function(x)
-    MiniTest.expect.equality(_G.x, x)
-  end
+  T['nested']['works'] = function(x) MiniTest.expect.equality(_G.x, x) end
 <
 ------------------------------------------------------------------------------
                                                             *MiniTest-test-case*

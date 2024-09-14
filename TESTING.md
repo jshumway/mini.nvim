@@ -471,6 +471,10 @@ end
 return T
 ```
 
+### Retry
+
+TODO
+
 ### Runtime access to current cases
 
 There is `MiniTest.current` table containing information about "current" test cases. It has `all_cases` and `case` fields with all currently executed tests and *the* current case.

@@ -1,3 +1,4 @@
+- FEATURE: add `n_retry` test set property. When set, each case will be tried that at most that many times until first success (if any).
 - BREAKING FEATURE: modify case specification to contain `pre_once`, `pre_case`, `post_case`, and `post_once` fields in `hooks` table (instead of previous `pre` and `post`). This allows for a more granular control over case execution.
 
 # Version 0.13.0.9000
