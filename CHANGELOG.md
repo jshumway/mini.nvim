@@ -1,5 +1,6 @@
 - FEATURE: add `n_retry` test set property. When set, each case will be tried that at most that many times until first success (if any).
 - FEATURE: add `hooks.pre_source` and `hooks.post_source` fields to collected cases. This enables more granular control over case execution.
+- FEATURE: `finally()` now can be called several times inside a single function with callbacks executed in order of how they were registered.
 
 # Version 0.13.0.9000
 
