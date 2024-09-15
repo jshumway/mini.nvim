@@ -1,3 +1,4 @@
+- FEATURE: add `n_retry` test set property. When set, each case will be tried that at most that many times until first success (if any).
 - FEATURE: add `hooks.pre_source` and `hooks.post_source` fields to collected cases. This enables more granular control over case execution.
 
 # Version 0.13.0.9000
