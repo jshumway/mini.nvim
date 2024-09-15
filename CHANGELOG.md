@@ -1,3 +1,5 @@
+- FEATURE: add `hooks.pre_source` and `hooks.post_source` fields to collected cases. This enables more granular control over case execution.
+
 # Version 0.13.0.9000
 
 - Stop official support of Neovim 0.7.
